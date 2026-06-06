@@ -12,7 +12,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gradio as gr
+from agents.nimble_client import NimbleClient
 from multi_agent.signal_multi_agent import run_pipeline
+
+_nimble = NimbleClient()
+NIMBLE_BADGE = (
+    "🟢 **Live web:** Nimble Search API active"
+    if _nimble.is_live
+    else "🟡 **Demo mode:** set `NIMBLE_API_KEY` in `.env` for live Nimble"
+)
 
 EXAMPLE_CLAIMS = [
     "Drinking bleach cures COVID-19",
@@ -50,11 +58,12 @@ def analyze_claim(claim_text: str):
 
 def build_ui():
     with gr.Blocks(title="signal.repair — Repair Broken Information") as demo:
-        gr.HTML("""
+        gr.HTML(f"""
         <div style="text-align:center; padding:16px 0;">
             <h1 style="margin:0; color:#0f766e;">signal.repair</h1>
             <p style="color:#444;">Paste a health or news claim → agents gather live evidence → cited verdict</p>
             <p style="font-size:0.9rem; color:#666;">DeveloperWeek NY 2026 · Nimble + LangGraph + MCP guardrails</p>
+            <p style="font-size:0.85rem; color:#0f766e;">{NIMBLE_BADGE}</p>
         </div>
         """)
 

@@ -28,8 +28,13 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Optional: live Nimble (required for Nimble sponsor prize)
-export NIMBLE_API_KEY="your-key"
+# Required for Nimble sponsor prize — live web search
+cp .env.example .env
+# Edit .env and paste your Nimble API key
+# OR: export NIMBLE_API_KEY="your-key"
+
+# Verify Nimble works:
+python scripts/test_nimble.py
 
 python app.py
 # Open http://127.0.0.1:7861

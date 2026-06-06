@@ -71,9 +71,10 @@ def extract_agent(state: ClaimState) -> ClaimState:
 def research_agent(state: ClaimState) -> ClaimState:
     _log("[RESEARCH-AGENT] Gathering live web evidence (Nimble)...")
     client = NimbleClient()
+    mode = "nimble-live" if client.is_live else "demo-fallback"
     sources = client.search(state["search_query"], max_results=5)
     scored = score_sources(sources)
-    _log(f"[RESEARCH-AGENT] {len(scored)} allowlisted sources scored")
+    _log(f"[RESEARCH-AGENT] mode={mode}; {len(scored)} allowlisted sources scored")
 
     return {
         **state,

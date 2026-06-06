@@ -1,7 +1,7 @@
 """Nimble API client for live web search and extraction."""
 from __future__ import annotations
 
-import json
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -11,12 +11,14 @@ from config import ALLOWLISTED_DOMAINS, DEMO_MODE, NIMBLE_API_KEY, NIMBLE_BASE_U
 
 
 def _domain_allowed(url: str) -> bool:
+    if not url:
+        return False
     host = urlparse(url).netloc.lower().removeprefix("www.")
     return any(host == d or host.endswith("." + d) for d in ALLOWLISTED_DOMAINS)
 
 
 def _demo_sources(query: str) -> list[dict[str, Any]]:
-    """Bundled sources for judge demos when Nimble key is not set."""
+    """Fallback when no API key (local dev only)."""
     q = query.lower()
     if "bleach" in q or "covid" in q:
         return [
@@ -64,10 +66,70 @@ def _demo_sources(query: str) -> list[dict[str, Any]]:
     ]
 
 
+def _parse_search_results(data: dict, max_results: int) -> list[dict[str, Any]]:
+    """Normalize Nimble search JSON into uniform source dicts."""
+    items = data.get("results") or data.get("data") or []
+    if not isinstance(items, list):
+        return []
+
+    parsed: list[dict[str, Any]] = []
+    for item in items[: max_results * 2]:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("link") or ""
+        snippet = (
+            item.get("snippet")
+            or item.get("description")
+            or item.get("content")
+            or ""
+        )
+        parsed.append(
+            {
+                "title": item.get("title") or "Untitled",
+                "url": url,
+                "snippet": str(snippet)[:500],
+                "source": "nimble",
+            }
+        )
+        if len(parsed) >= max_results:
+            break
+    return parsed
+
+
+def _poll_async_task(client: httpx.Client, headers: dict, task_id: str) -> dict:
+    """Poll Nimble async task until complete (max ~90s)."""
+    status_url = f"{NIMBLE_BASE_URL}/tasks/{task_id}"
+    results_url = f"{NIMBLE_BASE_URL}/tasks/{task_id}/results"
+
+    for _ in range(30):
+        status_resp = client.get(status_url, headers=headers)
+        status_resp.raise_for_status()
+        status_data = status_resp.json()
+        state = (status_data.get("status") or status_data.get("state") or "").lower()
+
+        if state in ("completed", "success", "done"):
+            res = client.get(results_url, headers=headers)
+            res.raise_for_status()
+            return res.json()
+        if state in ("failed", "error"):
+            raise RuntimeError(f"Nimble task failed: {status_data}")
+
+        time.sleep(3)
+
+    raise TimeoutError("Nimble async search timed out")
+
+
 class NimbleClient:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or NIMBLE_API_KEY
-        self.use_demo = not self.api_key and DEMO_MODE in ("auto", "1", "true", "yes")
+        placeholder = "your-nimble-api-key-here"
+        self.use_demo = (
+            not self.api_key or self.api_key == placeholder
+        ) and DEMO_MODE in ("auto", "1", "true", "yes")
+
+    @property
+    def is_live(self) -> bool:
+        return bool(self.api_key) and not self.use_demo
 
     def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
         if self.use_demo:
@@ -77,32 +139,45 @@ class NimbleClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        # Use Nimble include_domains — architectural guardrail at API level
+        # Hackathon API keys support minimal search payload only.
+        # Extra params (include_domains, focus, include_answer) return 403 on trial tier.
+        # Trust filtering happens in source_scorer after live results return.
         payload = {
             "query": query,
             "max_results": max_results,
-            "search_depth": "lite",
-            "include_answer": True,
         }
-        try:
-            with httpx.Client(timeout=60.0) as client:
-                resp = client.post(f"{NIMBLE_BASE_URL}/search", headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as exc:
-            return [{"title": "Nimble error", "url": "", "snippet": str(exc), "source": "error"}]
 
-        results: list[dict[str, Any]] = []
-        for item in data.get("results", data.get("data", []))[:max_results]:
-            if isinstance(item, dict):
-                url = item.get("url", "")
-                if url and not _domain_allowed(url):
-                    continue
-                results.append(
-                    {
-                        "title": item.get("title", "Untitled"),
-                        "url": url,
-                        "snippet": item.get("snippet", item.get("content", ""))[:500],
-                        "source": "nimble",
-                    }
-                )
-        return results or _demo_sources(query)
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                resp = client.post(f"{NIMBLE_BASE_URL}/search", headers=headers, json=payload)
+
+                # Some accounts return 202 + task_id for async search
+                if resp.status_code == 202:
+                    task_id = resp.json().get("task_id")
+                    if task_id:
+                        data = _poll_async_task(client, headers, task_id)
+                    else:
+                        data = resp.json()
+                else:
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                results = _parse_search_results(data, max_results)
+
+                # Attach Nimble LLM answer if present
+                answer = data.get("answer")
+                if answer and results:
+                    results[0]["nimble_answer"] = str(answer)[:400]
+
+                return results or _demo_sources(query)
+
+        except Exception as exc:
+            return [
+                {
+                    "title": "Nimble API error",
+                    "url": "",
+                    "snippet": str(exc),
+                    "source": "error",
+                }
+            ]

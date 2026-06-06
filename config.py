@@ -5,6 +5,16 @@ import os
 from pathlib import Path
 
 ROOT = Path(os.environ.get("SIGNAL_REPAIR_ROOT", Path(__file__).resolve().parent)).expanduser()
+
+# Load .env if present (never commit .env — see .env.example)
+_env_file = ROOT / ".env"
+if _env_file.is_file():
+    for line in _env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
 ANALYSIS_DIR = Path(os.environ.get("SIGNAL_REPAIR_ANALYSIS", ROOT / "analysis")).expanduser()
 REPORTS_DIR = Path(os.environ.get("SIGNAL_REPAIR_REPORTS", ROOT / "reports")).expanduser()
 
@@ -12,12 +22,14 @@ NIMBLE_API_KEY = os.environ.get("NIMBLE_API_KEY", "")
 NIMBLE_BASE_URL = os.environ.get("NIMBLE_BASE_URL", "https://sdk.nimbleway.com/v1")
 
 # Architectural guardrail: only these domains may be fetched/scored as evidence
+# High-trust domains for MCP fetch guardrail (hard block outside this list)
 ALLOWLISTED_DOMAINS: tuple[str, ...] = (
     "who.int",
     "cdc.gov",
     "nih.gov",
     "ncbi.nlm.nih.gov",
     "pubmed.ncbi.nlm.nih.gov",
+    "pmc.ncbi.nlm.nih.gov",
     "reuters.com",
     "apnews.com",
     "bbc.com",
@@ -26,6 +38,7 @@ ALLOWLISTED_DOMAINS: tuple[str, ...] = (
     "healthline.com",
     "mayoclinic.org",
     "fda.gov",
+    "cidrap.umn.edu",
 )
 
 DOMAIN_TRUST: dict[str, float] = {
@@ -35,12 +48,14 @@ DOMAIN_TRUST: dict[str, float] = {
     "nih.gov": 0.96,
     "ncbi.nlm.nih.gov": 0.95,
     "pubmed.ncbi.nlm.nih.gov": 0.95,
+    "pmc.ncbi.nlm.nih.gov": 0.94,
     "reuters.com": 0.90,
     "apnews.com": 0.90,
     "bbc.com": 0.88,
     "nature.com": 0.92,
     "mayoclinic.org": 0.89,
     "healthline.com": 0.82,
+    "cidrap.umn.edu": 0.88,
 }
 
 DEMO_MODE = os.environ.get("SIGNAL_REPAIR_DEMO", "auto").lower()

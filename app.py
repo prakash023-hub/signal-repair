@@ -28,6 +28,34 @@ EXAMPLE_CLAIMS = [
     "Vitamin C megadoses cure all cancers",
 ]
 
+# Full-width layout — Gradio defaults to a narrow centered column.
+FULLSCREEN_CSS = """
+html, body { height: 100%; margin: 0; }
+.gradio-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    padding: 12px 32px 32px !important;
+    box-sizing: border-box !important;
+}
+.contain, .main, .wrap, .app, .block, .form {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+.gradio-row { width: 100% !important; flex-wrap: wrap !important; }
+.gradio-column { width: 100% !important; min-width: 0 !important; }
+.gr-textbox, .gr-textbox > div, .gr-textbox textarea, .gr-textbox input {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+.gr-button-lg { min-height: 48px !important; }
+footer { display: none !important; }
+.signal-repair-footer, .signal-repair-footer * {
+    color: #134e4a !important;
+}
+"""
+
 
 def analyze_claim(claim_text: str):
     if not claim_text or not claim_text.strip():
@@ -57,9 +85,14 @@ def analyze_claim(claim_text: str):
 
 
 def build_ui():
-    with gr.Blocks(title="signal.repair — Repair Broken Information") as demo:
+    with gr.Blocks(
+        title="signal.repair — Repair Broken Information",
+        css=FULLSCREEN_CSS,
+        fill_width=True,
+        fill_height=True,
+    ) as demo:
         gr.HTML(f"""
-        <div style="text-align:center; padding:16px 0;">
+        <div style="text-align:center; padding:16px 0; width:100%;">
             <h1 style="margin:0; color:#0f766e;">signal.repair</h1>
             <p style="color:#444;">Paste a health or news claim → agents gather live evidence → cited verdict</p>
             <p style="font-size:0.9rem; color:#666;">DeveloperWeek NY 2026 · Nimble + LangGraph + MCP guardrails</p>
@@ -67,20 +100,27 @@ def build_ui():
         </div>
         """)
 
-        with gr.Row():
-            claim_in = gr.Textbox(
-                label="Claim to verify",
-                placeholder="e.g. Drinking bleach cures COVID-19",
-                lines=3,
-            )
+        claim_in = gr.Textbox(
+            label="Claim to verify",
+            placeholder="e.g. Drinking bleach cures COVID-19",
+            lines=4,
+            max_lines=6,
+        )
 
-        with gr.Row():
-            gr.Examples(examples=[[c] for c in EXAMPLE_CLAIMS], inputs=claim_in)
+        verify_btn = gr.Button(
+            "🔧 Repair Signal — Verify Claim",
+            variant="primary",
+            size="lg",
+        )
 
-        verify_btn = gr.Button("🔧 Repair Signal — Verify Claim", variant="primary", size="lg")
+        gr.Examples(examples=[[c] for c in EXAMPLE_CLAIMS], inputs=claim_in)
 
         verdict_out = gr.Markdown(label="Verdict")
-        details_out = gr.Textbox(label="Evidence & sources", lines=14)
+        details_out = gr.Textbox(
+            label="Evidence & sources",
+            lines=16,
+            max_lines=30,
+        )
         report_out = gr.Markdown(label="Full report")
 
         verify_btn.click(
@@ -90,9 +130,29 @@ def build_ui():
         )
 
         gr.HTML("""
-        <div style="background:#ecfdf5; border-radius:8px; padding:12px; margin-top:12px; font-size:0.9rem;">
-            <b>Pipeline:</b> Extract claim → Nimble live web search → allowlisted sources only → verdict report<br>
-            <b>Built by:</b> Prakash Raj · <b>Domain:</b> signal.repair
+        <div class="signal-repair-footer" style="
+            background:#ecfdf5;
+            border-radius:8px;
+            border-left:4px solid #0f766e;
+            padding:14px 16px;
+            margin-top:16px;
+            font-size:0.95rem;
+            width:100%;
+            box-sizing:border-box;
+            color:#134e4a !important;
+        ">
+            <p style="margin:0 0 6px 0; color:#134e4a !important;">
+                <b style="color:#0f766e !important;">Pipeline:</b>
+                <span style="color:#134e4a !important;">
+                    Extract claim → Nimble live web search → allowlisted sources only → verdict report
+                </span>
+            </p>
+            <p style="margin:0; color:#134e4a !important;">
+                <b style="color:#0f766e !important;">Built by:</b>
+                <span style="color:#134e4a !important;"> Prakash Raj · </span>
+                <b style="color:#0f766e !important;">Domain:</b>
+                <span style="color:#134e4a !important;"> signal.repair</span>
+            </p>
         </div>
         """)
 
